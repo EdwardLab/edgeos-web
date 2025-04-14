@@ -1,0 +1,301 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+      http-equiv="origin-trial"
+      content="Aq6vv/4syIkcyMszFgCc9LlH0kX88jdE7SXfCFnh2RQN0nhhL8o6PCQ2oE3a7n3mC7+d9n89Repw5HYBtjarDw4AAAB3eyJvcmlnaW4iOiJodHRwczovL3B5b2RpZGUub3JnOjQ0MyIsImZlYXR1cmUiOiJXZWJBc3NlbWJseUpTUHJvbWlzZUludGVncmF0aW9uIiwiZXhwaXJ5IjoxNzMwMjQ2Mzk5LCJpc1N1YmRvbWFpbiI6dHJ1ZX0="
+    />
+    <meta
+      http-equiv="origin-trial"
+      content="Ai8IXb0XqedlM/Q2guWXFfBkKiYY9uaPZpdjHqc8y0ZvpAfK9SKzp/dIuFH+txG/HEKxt59uIkk39hhWrhNgbw4AAABieyJvcmlnaW4iOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJmZWF0dXJlIjoiV2ViQXNzZW1ibHlKU1Byb21pc2VJbnRlZ3JhdGlvbiIsImV4cGlyeSI6MTczMDI0NjM5OX0="
+    />
+    <script src="https://cdn.jsdelivr.net/npm/jquery"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery.terminal@2.35.2/js/jquery.terminal.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery.terminal@2.35.2/js/unix_formatting.min.js"></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/jquery.terminal@2.35.2/css/jquery.terminal.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐍</text></svg>"
+      rel="icon"
+    />
+    <style>
+      #jquery-terminal-logo {
+        top: 5px;
+        right: 10px;
+        font-size: 0.6em;
+      }
+
+      #loading {
+        width: 36px;
+        height: 36px;
+        border-width: 4px;
+      }
+    }
+      html, body {
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+      }
+      .terminal {
+        --size: 1.5;
+        --color: rgba(255, 255, 255, 0.8);
+      }
+      .noblink {
+        --animation: terminal-none;
+      }
+      body {
+        background-color: black;
+        margin: 0;
+        padding: 0;
+      }
+      #jquery-terminal-logo {
+        color: white;
+        border-color: white;
+        position: absolute;
+        top: 7px;
+        right: 18px;
+        z-index: 2;
+      }
+      #jquery-terminal-logo a {
+        color: gray;
+        text-decoration: none;
+        font-size: 0.7em;
+      }
+      #loading {
+      display: block;
+      width: 48px;
+      height: 48px;
+      margin: auto;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border: 5px solid rgba(255, 255, 255, 0.2);
+      border-top: 5px solid #00d1ff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: translate(-50%, -50%) rotate(0deg);
+      }
+      100% {
+        transform: translate(-50%, -50%) rotate(360deg);
+      }
+    }
+
+    @-webkit-keyframes spin {
+      to {
+        -webkit-transform: rotate(360deg);
+      }
+    }
+    @media (max-width: 600px) {
+      .terminal {
+        font-size: 12px !important;
+      }
+    }
+
+    @media (max-width: 400px) {
+      .terminal {
+        font-size: 10px !important;
+      }
+    }
+    </style>
+  </head>
+  <body>
+    <div id="jquery-terminal-logo">
+      <a href="https://terminal.jcubic.pl/">jQuery Terminal</a>
+    </div>
+    <div id="loading"></div>
+    <script type="module">
+      import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
+    
+      function syncfs(load = false) {
+        return new Promise((resolve, reject) => {
+          pyodide.FS.syncfs(load, (err) => (err ? reject(err) : resolve()));
+        });
+      }
+    
+      async function extractRootfsToMnt(zip) {
+        for (const [path, entry] of Object.entries(zip.files)) {
+          const fullPath = "/mnt/rootfs/" + path;
+          if (entry.dir) {
+            pyodide.FS.mkdirTree(fullPath);
+          } else {
+            const content = await entry.async("uint8array");
+            pyodide.FS.mkdirTree(fullPath.split("/").slice(0, -1).join("/"));
+            pyodide.FS.writeFile(fullPath, content);
+          }
+        }
+      }
+    
+      async function loadAndMountRootfs() {
+        console.log("[rootfs] Not found, downloading rootfs.zip...");
+        const resp = await fetch("rootfs.zip");
+        if (!resp.ok) throw new Error("Failed to fetch rootfs.zip");
+        const zip = await JSZip.loadAsync(await resp.blob());
+        await extractRootfsToMnt(zip);
+        await syncfs(false);
+        console.log("[rootfs] Extracted and saved.");
+      }
+    
+      async function loadRootfsIfMissing() {
+        const fs = pyodide.FS;
+        if (!fs.analyzePath("/mnt/rootfs/bin/shell.py").exists) {
+          await loadAndMountRootfs();
+        } else {
+          console.log("[rootfs] Found in IndexedDB.");
+        }
+      }
+    
+      async function createRootLinks() {
+        const fs = pyodide.FS;
+        const links = ["boot", "bin", "etc", "home", "proc", "usr", "var"];
+        for (const dir of links) {
+          const target = `/mnt/rootfs/${dir}`;
+          const link = `/${dir}`;
+          try {
+            if (!fs.analyzePath(link).exists) {
+              fs.symlink(target, link);
+              console.log(`symlink: ${link} → ${target}`);
+            }
+          } catch (e) {
+            console.warn(`Symlink ${dir} failed:`, e);
+          }
+        }
+      }
+    
+      async function main() {
+        const indexURL = "https://cdn.jsdelivr.net/pyodide/v0.27.5/full/";
+        const { loadPyodide } = await import(indexURL + "pyodide.mjs");
+        globalThis.pyodide = await loadPyodide();
+    
+        let { repr_shorten, BANNER, PyodideConsole } = pyodide.pyimport("pyodide.console");
+        BANNER = `[BOOTLOADER] EdgeOS WEB, kernel ${pyodide.version}\n${BANNER}`;
+    
+        const pyconsole = PyodideConsole(pyodide.globals);
+
+    
+        const FS = pyodide.FS;
+        FS.mkdirTree("/mnt/rootfs");
+        FS.mount(FS.filesystems.IDBFS, {}, "/mnt/rootfs");
+        await syncfs(true);
+        const debug = new URLSearchParams(location.search).get("debug") === "1";
+        if (debug) {
+          console.log("[rootfs] Debug mode: force refresh rootfs...");
+          await loadAndMountRootfs();
+        } else {
+          await loadRootfsIfMissing();
+        }
+
+        await createRootLinks();
+    
+        const echo = (msg, ...opts) =>
+          term.echo(
+            msg.replaceAll("]]", "&rsqb;&rsqb;").replaceAll("[[", "&lsqb;&lsqb;"),
+            ...opts
+          );
+    
+        const ps1 = ">>> ";
+        const ps2 = "... ";
+    
+
+        async function updatePrompt() {
+          const cwd = await pyodide.runPythonAsync("os.getcwd()");
+          term.set_prompt(`${cwd} $ `);
+        }
+
+        const term = $("body").terminal(async (command) => {
+          const parts = command.trim().split(/\s+/);
+          if (!parts[0]) return;
+          if (parts[0] === "exit") {
+            term.echo("Goodbye.");
+            term.disable();
+            return;
+          }
+
+          try {
+            await pyodide.runPythonAsync(`
+        import importlib.util, os
+        cmd = "${parts[0]}"
+        args = ${JSON.stringify(parts.slice(1))}
+
+        COMMAND_PATHS = ["/bin/bigbox"]
+        for path in COMMAND_PATHS:
+            full_path = os.path.join(path, f"{cmd}.py")
+            if os.path.isfile(full_path):
+                spec = importlib.util.spec_from_file_location(f"bigbox.{cmd}", full_path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                if hasattr(mod, "main"):
+                    result = mod.main(args)
+                    if hasattr(result, "__await__"):
+                        await result
+                    break
+                else:
+                    print(f"{cmd}: no main(args) function")
+                    break
+        else:
+            print(f"{cmd}: command not found")
+        `);
+          } catch (err) {
+            term.error("[ERROR] " + (err.message || err));
+          }
+
+
+          await updatePrompt();
+        }, {
+          name: "edgeos",
+          history: true,
+          greetings: false,
+          prompt: "loading... ",
+        });
+
+
+
+
+    
+        window.term = term;
+        pyodide.globals.set("input", pyodide.toPy(async (prompt) => {
+        return await term.read(prompt ?? "");
+        }));
+
+        pyodide.setStdout({ batched: (s) => echo(s) });
+        pyodide.setStderr({ batched: (s) => term.error(s.trimEnd()) });
+    
+        $("#loading").remove();
+
+        echo("Project EdgeOS WEB, Powered by EdwardLab (https://github.com/EdwardLab, https://edwarddev.com) GPLv3.0 License");
+        echo("[BOOTLOADER] Kernel loaded");
+        try {
+          echo("[INIT] Executing EdgeShell /mnt/rootfs/bin/shell.py...");
+          const code = pyodide.FS.readFile("/mnt/rootfs/bin/shell.py", { encoding: "utf8" });
+          await pyodide.runPythonAsync(code);
+          echo("Welcome to EdgeShell!");
+        } catch (err) {
+          echo("[INIT] Error: " + (err.message || err));
+        }
+        
+        await syncfs(false);
+        await updatePrompt();
+      }
+    
+      window.addEventListener("beforeunload", () => {
+        pyodide?.FS?.syncfs?.(false, (err) => {
+          if (err) console.error("Sync error:", err);
+          else console.log("Synced on unload");
+        });
+      });
+
+
+      
+      main();
+    </script>
+    
+  </body>
+</html>

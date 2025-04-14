@@ -1,0 +1,19 @@
+
+
+
+
+Welcome to EdgeOS (Web Edition)
+
+ * GitHub:         https://github.com/edwardlab/edgeos-web
+ * Donate:         https://edwarddev.com/donate
+
+System information:
+
+ Kernel:       EdgeOS kernel 
+ User:         user
+ Shell:        EdgeShell v0.2
+ Storage:      /mnt/rootfs mounted on IDBFS (Persistent Storage)
+
+Looking for the bigbox command? It's in: /bin/bigbox
+
+You can modify this message by editing: /etc/motd
